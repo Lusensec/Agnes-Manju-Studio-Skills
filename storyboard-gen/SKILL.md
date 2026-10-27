@@ -30,6 +30,12 @@ description: |
 # 全套分镜（角色 + 场景）
 python examples/gen-storyboard.py "项目名"
 
+# 镜级模式（总导演 shotlist，逐镜出图）
+python examples/gen-storyboard.py "项目名" --shotlist
+
+# 断点续跑（只补失败/缺失槽，状态账本 scripts/<项目>-storyboard-status.json）
+python examples/gen-storyboard.py "项目名" --retry-failed
+
 # 角色三视图
 python examples/gen-character.py "项目名" "角色名" three-view
 
@@ -41,29 +47,27 @@ python examples/gen-background.py "项目名" [场景ID]
 
 # 道具/物品
 python examples/gen-props.py "项目名" [道具名]
+
+# 总览拼图（网格总览，供用户一眼确认全批）
+python examples/gen-mosaic.py "项目名" [--kind scene|char|all] [--cols 2] [--cell 720x405]
 ```
 
 ## 用户确认点
 
 运行结束后，**Agent 必须展示生成的图片并等用户确认**。
 
-- 展示：各场景图片（`show_image` 或列出路径）
+- 展示：优先跑 `gen-mosaic.py` 生成总览图（一张网格图看全批；竖屏项目用 `--cell 405x720`），再列关键单图
 - 询问：「图片满意吗？要重新生成某张？」
 - 用户说"继续"→ 执行 Step 3（视频）
-- 用户说"第 N 张重来"→ `--scene N` 重新生成
+- 用户说"第 N 张重来"→ `--scene N`（或 `--retry-failed` 补失败槽）
 - 用户说"补个三视图"→ `gen-character.py "项目" "角色名" three-view`
 
-## 剧本 JSON 新增字段
+## 剧本 JSON 资产字段
 
-```json
-{
-  "props": [
-    {"name": "玫瑰花", "description": "一朵粉色玫瑰，花瓣微微枯萎，茎上有刺"}
-  ]
-}
-```
-
-`write-script.py` 会自动让 AI 输出 2-5 个关键道具。
+`write-script.py` 自动输出五路资产（缺字段时自动补空数组）：
+`characters` / `locations` / `costumes` / `props` / `weather`。
+`gen-storyboard.py` 会按场景引用的 `location` / `props` 注入资产描述到提示词
+（跨镜一致性，借鉴 ComfyUI 资产注入）。
 
 ## 速率限制（agnes-image-2.5-flash）
 
@@ -78,9 +82,10 @@ python examples/gen-props.py "项目名" [道具名]
 
 | 脚本 | 参数 |
 |------|------|
-| `examples/gen-storyboard.py` | `[项目名] [--scene N] [--size 1K\|2K]` |
+| `examples/gen-storyboard.py` | `[项目名] [--scene N] [--size 1K\|2K] [--shotlist] [--retry-failed]` |
 | `examples/gen-character.py` | `[项目名] [角色名] [sheet\|three-view\|expression]` |
 | `examples/gen-background.py` | `[项目名] [场景ID]` |
 | `examples/gen-props.py` | `[项目名] [道具名]` |
+| `examples/gen-mosaic.py` | `[项目名] [--kind scene\|char\|all] [--cols N] [--cell WxH]` |
 | `examples/load_env.py` | 无 |
 | `examples/track.py` | 内部使用 |

@@ -31,8 +31,20 @@ Rate limit (agnes-video-2.5-flash):
   - size 固定 720P
   - 时长 4-12s
 
+Batch status (breakpoint resume): each round writes
+scripts/<project>-video-status.json with per-slot status {success,
+error(+reason), pending}; rerun with --retry-failed to only redo
+failed slots.
+
+Shotlist mode (总导演): with --shotlist, work per SHOT from
+scripts/<project>-shotlist.json (gen-shotlist.py): clips are named
+scene-<shot>.mp4 so merge-videos.py and the image-URL refs
+(scene-<shot> from gen-storyboard.py --shotlist) keep working.
+
 Usage:
     python gen-video.py "项目名" [--scene N] [--duration 5]
+    python gen-video.py "项目名" --shotlist
+    python gen-video.py "项目名" --retry-failed
 """
 import json
 import os
@@ -43,6 +55,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -81,6 +94,17 @@ def load_image_urls(project: str) -> dict:
     urls_file = PROJECT_ROOT / project / "scripts" / f"{project}-image-urls.json"
     if urls_file.exists():
         return json.loads(urls_file.read_text(encoding="utf-8"))
+    return {}
+
+
+def load_video_status(project: str) -> dict:
+    """Load per-slot status ledger written by a previous gen-video run."""
+    f = PROJECT_ROOT / project / "scripts" / f"{project}-video-status.json"
+    if f.exists():
+        try:
+            return json.loads(f.read_text(encoding="utf-8")).get("slots", {})
+        except Exception:
+            return {}
     return {}
 
 
@@ -302,15 +326,20 @@ def load_api_pairs() -> list:
     return pairs
 
 
-def _run_serial(pair, work_items, project, duration, aspect_ratio):
+def _run_serial(pair, work_items, project, duration, aspect_ratio, slots=None):
     """Single-key path: process scenes one by one (65s apart).
-    pair = (api_key, base_url)."""
+    pair = (api_key, base_url). If slots is provided, each slot's final
+    status is recorded there (success / error+reason / pending)."""
     api_key, base_url = pair
+    if slots is None:
+        slots = {}
     total = len(work_items)
+    stopped = False
     for i, item in enumerate(work_items):
         sid = item["sid"]
         out_file = item["out_file"]
         refs, prompt, scene_audios = item["refs"], item["prompt"], item["audios"]
+        slot = slots.setdefault(str(sid), {"status": "pending"})
 
         print(f"  🎥 [{i+1}/{total}] scene-{sid}: {item['title'][:30]}...")
         try:
@@ -323,34 +352,45 @@ def _run_serial(pair, work_items, project, duration, aspect_ratio):
             mp4_data = urllib.request.urlopen(video_url).read()
             out_file.write_bytes(mp4_data)
             track_file(project, "video", str(out_file), f"视频 scene-{sid}", f"duration={duration}s")
+            slot.update({"status": "success", "file": out_file.name})
             print(f"     ✅ {out_file.name} ({len(mp4_data)//1024}KB)")
         except urllib.error.HTTPError as e:
             if e.code in (429, 503):
-                print(f"     ❌ scene-{sid} 提交失败 (HTTP {e.code})，重试 {4} 次后仍被限流/队列满")
+                reason = "429 限流 / 503 视频队列已满，重试后仍失败"
+                slot.update({"status": "error", "reason": reason})
+                print(f"     ❌ scene-{sid} 提交失败 (HTTP {e.code})，{reason}")
                 print("⚠️  Agnes 视频队列已满，本轮停止。稍后重新运行本脚本即可续跑（已完成的片段会自动跳过）。")
-                sys.exit(3)
+                stopped = True
+                break
             if e.code == 400:
                 body = e.read().decode("utf-8", "replace")[:300]
+                slot.update({"status": "error", "reason": f"HTTP 400: {body}"})
                 print(f"     ❌ scene-{sid} 提交被拒 (HTTP 400): {body}")
-                print("⚠️  400 是永久性参数/参考校验失败（常见：分镜图或 TTS 的参考 URL 不可达），"
-                      "本轮停止。修正参考源后重跑。")
-                sys.exit(3)
-            print(f"     ❌ 提交失败 (HTTP {e.code}): {e.reason}")
+                print("⚠️  400 是永久性参数/参考校验失败（常见：分镜图或 TTS 的参考 URL 不可达），本轮停止。修正参考源后重跑。")
+                stopped = True
+                break
+            reason = f"HTTP {e.code}: {e.reason}"
+            slot.update({"status": "error", "reason": reason})
+            print(f"     ❌ 提交失败 (HTTP {e.code}): {e.reason}（记录后继续下一段）")
         except OSError as e:
-            # network hiccups (read timeout / connection reset): fail fast so the
-            # caller's retry loop restarts quickly instead of sleeping 65s per scene
+            slot.update({"status": "error", "reason": f"网络瞬时故障: {str(e)[:60] or '连接中断'}"})
             print(f"     ⏱  网络瞬时故障（{str(e)[:60] or '连接中断'}），本轮停止")
             print("⚠️  网络不稳或队列繁忙。稍后重新运行本脚本即可续跑（已完成的片段会自动跳过）。")
-            sys.exit(3)
+            stopped = True
+            break
         except Exception as e:
-            print(f"     ❌ 失败: {e}")
+            slot.update({"status": "error", "reason": str(e)[:300]})
+            print(f"     ❌ 失败: {e}（记录后继续下一段）")
 
+        if stopped:
+            break
         if i < total - 1:
             print(f"     ⏱  等待 {VIDEO_INTERVAL_SEC}s (剩余 {total - i - 1} 个)...")
             time.sleep(VIDEO_INTERVAL_SEC)
+    return stopped
 
 
-def _run_parallel(api_pairs, work_items, project, duration, aspect_ratio):
+def _run_parallel(api_pairs, work_items, project, duration, aspect_ratio, slots=None):
     """One worker thread per key/platform pair; shared scene queue, per-key
     65s pacing. Works across platforms (domestic + international keys mix).
 
@@ -358,11 +398,21 @@ def _run_parallel(api_pairs, work_items, project, duration, aspect_ratio):
     back to the queue and the worker cools down 90s while other workers
     keep moving. A 25-minute no-progress watchdog exits the round (exit 3)
     so an outer retry loop can restart it.
-    """
+    If slots is provided, per-slot final status is recorded there."""
+    if slots is None:
+        slots = {}
     lock = threading.Lock()
     state = {"claimed": {}, "done": 0, "last_progress": time.time(), "fatal": False}
     for w in work_items:
         state["claimed"][id(w)] = False
+
+    def _rec(item, status, reason=None, file_=None):
+        slot = slots.setdefault(str(item["sid"]), {"status": "pending"})
+        slot["status"] = status
+        if reason:
+            slot["reason"] = reason
+        if file_:
+            slot["file"] = file_
 
     def worker(idx, pair):
         key, base_url = pair
@@ -398,6 +448,7 @@ def _run_parallel(api_pairs, work_items, project, duration, aspect_ratio):
                                f"视频 scene-{sid}", f"duration={duration}s")
                     state["done"] += 1
                     state["last_progress"] = time.time()
+                    _rec(item, "success", file_=item["out_file"].name)
                 print(f"     ✅ {tag} {item['out_file'].name} ({len(mp4_data)//1024}KB)")
             except urllib.error.HTTPError as e:
                 with lock:
@@ -412,19 +463,24 @@ def _run_parallel(api_pairs, work_items, project, duration, aspect_ratio):
                           "修正参考源后重跑。")
                     with lock:
                         state["fatal"] = True
+                        _rec(item, "error", reason=f"HTTP 400: {body}")
                     return
                 else:
-                    print(f"     ❌ {tag} 提交失败 (HTTP {e.code}): {e.reason}")
+                    with lock:
+                        _rec(item, "error", reason=f"HTTP {e.code}: {e.reason}")
+                    print(f"     ❌ {tag} 提交失败 (HTTP {e.code}): {e.reason}（记录后稍后再试）")
                     time.sleep(30)
             except OSError as e:
                 with lock:
                     state["claimed"][id(item)] = False
+                    _rec(item, "error", reason=f"网络瞬时故障: {str(e)[:60] or '连接中断'}")
                 print(f"     ⏱ {tag} 网络瞬时故障（{str(e)[:60] or '连接中断'}），worker 稍后再试")
                 time.sleep(90)
             except Exception as e:
                 with lock:
                     state["claimed"][id(item)] = False
-                print(f"     ❌ {tag} 失败: {e}")
+                    _rec(item, "error", reason=str(e)[:300])
+                print(f"     ❌ {tag} 失败: {e}（记录后稍后再试）")
                 time.sleep(30)
 
     threads = []
@@ -445,12 +501,12 @@ def _run_parallel(api_pairs, work_items, project, duration, aspect_ratio):
         if fatal:
             missing = sum(1 for w in work_items if not w["out_file"].exists())
             print(f"⚠️  检测到永久性提交失败 (400)，本轮停止。剩余 {missing} 段。")
-            sys.exit(3)
+            break
         if stall > 1500:
             missing = sum(1 for w in work_items if not w["out_file"].exists())
             print(f"⚠️  全部 worker 已停滞 {int(stall//60)} 分钟（队列满/网络），"
                   f"本轮停止。剩余 {missing} 段，稍后重新运行本脚本即可续跑。")
-            sys.exit(3)
+            break
     _ = done
 
 
@@ -462,20 +518,54 @@ def main():
     project = sys.argv[1]
     scene_filter = None
     duration = None
+    use_shotlist = False
+    retry_failed = False
     if "--scene" in sys.argv:
         scene_filter = int(sys.argv[sys.argv.index("--scene") + 1])
     if "--duration" in sys.argv:
         duration = validate_duration(sys.argv[sys.argv.index("--duration") + 1])
+    if "--shotlist" in sys.argv:
+        use_shotlist = True
+    if "--retry-failed" in sys.argv:
+        retry_failed = True
 
     proj_dir = PROJECT_ROOT / project
     video_dir = proj_dir / "videos"
     video_dir.mkdir(parents=True, exist_ok=True)
     img_dir = proj_dir / "images"
+    script_dir = proj_dir / "scripts"
 
-    scripts = list((proj_dir / "scripts").glob(f"{project}-script.json"))
+    scripts = list(script_dir.glob(f"{project}-script.json"))
     script = json.loads(scripts[0].read_text(encoding="utf-8")) if scripts else {}
     scenes = script.get("scenes", [])
     config = script.get("config", {})
+
+    # ---- shotlist mode: work per SHOT (gen-shotlist.py output) ----
+    shotlist = None
+    if use_shotlist:
+        sl_file = script_dir / f"{project}-shotlist.json"
+        if not sl_file.exists():
+            print(f"[ERROR] 未找到 shotlist: {sl_file}", file=sys.stderr)
+            print(f"       先运行 → python script-writer/examples/gen-shotlist.py \"{project}\"")
+            sys.exit(1)
+        shotlist = json.loads(sl_file.read_text(encoding="utf-8"))
+        shots = shotlist.get("shots", [])
+        if scene_filter:
+            shots = [s for s in shots if s.get("shot") == scene_filter]
+        notes = str(shotlist.get("director_notes", ""))[:120]
+        scenes = []
+        for s in shots:
+            desc = f"{s.get('frame', '')}. Camera: {s.get('camera', '')}"
+            if notes:
+                desc += f" Continuity: {notes}"
+            scenes.append({"scene_id": s.get("shot", 0), "title": s.get("title", ""),
+                           "description": desc,
+                           "description_zh": f"{s.get('title', '')} | {s.get('camera', '')}",
+                           "seconds": s.get("seconds")})
+        if duration is None:
+            duration = validate_duration(str(shotlist.get("seconds_default",
+                              config.get("video_duration", "5"))))
+
     if duration is None:
         duration = validate_duration(str(config.get("video_duration", "5")))
     aspect_ratio = config.get("aspect_ratio", "16:9")
@@ -495,16 +585,31 @@ def main():
     elif tts_urls:
         mode_label += f" + {len(tts_urls)} 段配音参考"
 
-    if scene_filter:
+    if scene_filter and not use_shotlist:
         scenes = [s for s in scenes if s.get("scene_id") == scene_filter]
     if not scenes:
         scene_files = sorted(img_dir.glob("scene-*.png"))
         scenes = [{"scene_id": int(f.stem.split("-")[1]), "title": f.stem,
                    "description": f.stem, "description_zh": f.stem} for f in scene_files]
 
+    # ---- breakpoint resume: --retry-failed only redoes failed slots ----
+    status_file = script_dir / f"{project}-video-status.json"
+    if retry_failed:
+        prev_slots = load_video_status(project)
+        bad = {k for k, v in prev_slots.items() if v.get("status") != "success"}
+        kept = [s for s in scenes
+                if str(s.get("scene_id")) in bad
+                or not (video_dir / f"scene-{s.get('scene_id')}.mp4").exists()]
+        if not kept:
+            print("✅ status 中无失败槽（或视频均已生成），无需重跑。")
+            sys.exit(0)
+        scenes = kept
+        print(f"🔁 --retry-failed: 仅重做 {len(kept)} 个失败/缺失槽")
+
     total = len(scenes)
     api_pairs = load_api_pairs()
     n_keys = len(api_pairs)
+    mode_label += " | shotlist 镜级模式" if use_shotlist else ""
     print(f"🎬 生成 {total} 个视频片段")
     print(f"   模式: {mode_label}")
     print(f"   Key: {n_keys} 个（{'并行' if n_keys > 1 else '串行'}）")
@@ -514,10 +619,12 @@ def main():
 
     # ---- build per-scene work items (refs / prompt / audio refs) ----
     work_items = []
+    slots = {}
     for scene in scenes:
         sid = scene.get("scene_id", 0)
         out_file = video_dir / f"scene-{sid}.mp4"
         if out_file.exists():
+            slots[str(sid)] = {"status": "success", "file": out_file.name}
             print(f"  ⏭  scene-{sid} 已存在，跳过")
             continue
 
@@ -547,6 +654,7 @@ def main():
         work_items.append({"sid": sid, "out_file": out_file, "refs": refs,
                           "prompt": prompt, "audios": scene_audios,
                           "title": scene.get("title", "")})
+        slots[str(sid)] = {"status": "pending"}
 
     if not work_items:
         print(f"\n✅ 所有 {total} 个片段已存在，无需生成。")
@@ -559,21 +667,37 @@ def main():
 
     # ---- dispatch: serial (single key) or parallel (multi-key/multi-platform) ----
     api_pairs = load_api_pairs()
+    if not api_pairs:
+        print("\n[ERROR] 没有可用的 API Key：请在 .env 中配置 AGNESAI_API_KEY（参考 .env.example）", file=sys.stderr)
+        sys.exit(1)
     if len(api_pairs) <= 1:
         print(f"\n开始串行生成 {len(work_items)} 个片段（单 key）...\n")
         _run_serial(api_pairs[0] if api_pairs else None, work_items,
-                    project, duration, aspect_ratio)
+                    project, duration, aspect_ratio, slots)
     else:
         platforms = sorted({b for _, b in api_pairs})
         plat_label = "、".join(p.split("/")[2] for p in platforms)
         print(f"\n开始并行生成 {len(work_items)} 个片段（{len(api_pairs)} 个 key，"
               f"平台: {plat_label}，每个 worker 间隔 {VIDEO_INTERVAL_SEC}s）...\n")
-        _run_parallel(api_pairs, work_items, project, duration, aspect_ratio)
+        _run_parallel(api_pairs, work_items, project, duration, aspect_ratio, slots)
+
+    # ---- write batch status ledger (merge with previous rounds) ----
+    prev = load_video_status(project)
+    merged = {**prev, **slots}
+    status = {
+        "project": project,
+        "artifact": "scene-{sid}.mp4",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "slots": merged,
+    }
+    status_file.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
 
     missing = [w["sid"] for w in work_items if not w["out_file"].exists()]
     if missing:
-        print(f"\n⚠️  本轮结束，仍缺 {len(missing)} 段: scene-{', scene-'.join(map(str, missing))}")
-        print("⚠️  稍后重新运行本脚本即可续跑（已完成的片段会自动跳过）。")
+        n_err = sum(1 for v in slots.values() if v["status"] == "error")
+        print(f"\n⚠️  本轮结束，仍缺 {len(missing)} 段: scene-{', scene-'.join(map(str, missing))}（{n_err} 槽已记录失败原因）")
+        print(f"⚠️  稍后重新运行并加 --retry-failed 即可只补失败项：")
+        print(f"   python gen-video.py \"{project}\" --retry-failed")
         sys.exit(3)
 
     print(f"\n✅ 视频生成完成，保存在 {video_dir}/")

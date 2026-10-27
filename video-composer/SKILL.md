@@ -73,12 +73,22 @@ python examples/gen-video.py "项目名"
 # 只生成某个场景
 python examples/gen-video.py "项目名" --scene 3
 
+# 镜级模式（总导演 shotlist，逐镜出视频）
+python examples/gen-video.py "项目名" --shotlist
+
+# 断点续跑（只补失败/缺失槽，状态账本 scripts/<项目>-video-status.json）
+python examples/gen-video.py "项目名" --retry-failed
+
 # 查询视频状态
 python examples/poll-video.py <video_id>
 
 # 拼接所有视频（需要 ffmpeg）
 python examples/merge-videos.py "项目名"
 ```
+
+每轮结束都会写 `scripts/<项目>-video-status.json`（逐槽 success/error+reason/pending），
+失败原因可据此定位（400=参考 URL 不可达/参数错；429/503=限流或队列满）；
+`--retry-failed` 只重做失败槽。
 
 ## 用户确认点
 
@@ -126,7 +136,7 @@ python examples/merge-videos.py "项目名"
 
 | 脚本 | 参数 |
 |------|------|
-| `examples/gen-video.py` | `[项目名] [--scene N]` |
+| `examples/gen-video.py` | `[项目名] [--scene N] [--duration N] [--shotlist] [--retry-failed]` |
 | `examples/poll-video.py` | `<video_id> [api_key]` |
 | `examples/merge-videos.py` | `[项目名]` |
 | `examples/load_env.py` | 无 |

@@ -125,13 +125,19 @@ Agent 在用户给出故事概念后，应主动询问：
 # 初始化项目
 python asset-manager/examples/init-project.py "我的漫剧"
 
-# Step 1: 写剧本
+# Step 1: 写剧本（可加三维参数：--tag 逆袭爽文 --emotion 爽 --rhythm 快 --target-total 180 --director-style 悬疑）
 python script-writer/examples/write-script.py "我的漫剧" "一个宇航员在太空遇见一条会说话的鱼"
 
-# 用户确认后 → Step 2: 生成分镜图
+# Step 1.5（可选）: 总导演镜级拆分
+python script-writer/examples/gen-shotlist.py "我的漫剧"
+
+# 用户确认后 → Step 2: 生成分镜图（有 shotlist 时加 --shotlist）
 python storyboard-gen/examples/gen-storyboard.py "我的漫剧"
 
-# 用户确认后 → Step 3: 生成视频（可选）
+# 总览确认（可选）: 网格拼图一眼看全批
+python storyboard-gen/examples/gen-mosaic.py "我的漫剧"
+
+# 用户确认后 → Step 3: 生成视频（可选，失败槽可 --retry-failed 续跑）
 python video-composer/examples/gen-video.py "我的漫剧"
 ```
 
