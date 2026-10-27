@@ -270,11 +270,7 @@ Agnes-Manju-Studio-Skills/
 
 ## 给 Agent 安装 Skill
 
-克隆（或复制）整个仓库到 Agent 框架的 skills 目录（路径依框架约定，如 Claude 的 `~/.claude/skills/`），以根目录 `SKILL.md` 为统一入口；每个子 Skill 目录（含 `Agnes-Flash-Suite-Skills/` 内的 4 个模型子 Skill）也可单独提取安装：
-
-```bash
-git clone https://github.com/Lusensec/Agnes-Manju-Studio-Skills.git
-```
+参考安装 Agent skill：https://raw.githubusercontent.com/Lusensec/Agnes-Manju-Studio-Skills/master/SKILL.md
 
 安装后对 Agent 说：
 - "用 douyin 预设帮我做 XX 漫剧"
