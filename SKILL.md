@@ -10,7 +10,7 @@ description: |
   - video-composer（图生视频 + 限流/队列满自动重试 + 可选 TTS 音频参考嘴型同步；agnes-video-2.5-flash）
   - post-production（TTS 配音 + 字幕 + BGM + 最终合成（场景对齐配音）；edge-tts + ffmpeg）
   - asset-manager（资产追踪 / 项目文件夹管理；本地）
-  - agnes-flash-suite（基础能力：生图/生视频/对话；全系列）
+  - Agnes-Flash-Suite-Skills（基础能力：agent 编程/生图/生视频/对话/思考；4 个模型子 Skill）
 
   跨平台支持：Windows/Linux/macOS；中文 GBK 控制台自动切 UTF-8 输出；.env 从套件根目录向上自动发现。
 
@@ -26,7 +26,7 @@ description: |
 
 | 子 Skill | 核心能力 | 对应 Agnes 模型 | 触发场景 |
 |----------|---------|---------------|---------|
-| **agnes-flash-suite** | 基础能力（生图/生视频/对话） | 全系列 | 直接调用 Agnes API |
+| **Agnes-Flash-Suite-Skills** | 基础能力（agent 编程/生图/生视频/对话/思考） | 3.0/2.5 全系列 | 直接调用 Agnes API |
 | **script-writer** | 剧本 + 角色设定 + 分镜脚本 + 模板预设 | `agnes-3.0-flash` | 故事概念 → 结构化剧本 |
 | **storyboard-gen** | 三视图/背景/道具/分镜 + URL 存储 | `agnes-image-2.5-flash` | 剧本 → 逐镜头生图 |
 | **video-composer** | 图生视频（reference）+ 429/503 退避重试 + 可选 TTS 音频参考（对白嘴型同步） | `agnes-video-2.5-flash` | 图片 → 动态视频 |
@@ -143,7 +143,7 @@ python video-composer/examples/gen-video.py "我的漫剧"
 - [storyboard-gen/SKILL.md](./storyboard-gen/SKILL.md)
 - [video-composer/SKILL.md](./video-composer/SKILL.md)
 - [asset-manager/SKILL.md](./asset-manager/SKILL.md)
-- [agnes-flash-suite/SKILL.md](./agnes-flash-suite/SKILL.md)
+- [Agnes-Flash-Suite-Skills/SKILL.md](./Agnes-Flash-Suite-Skills/SKILL.md)
 
 ## 技术规格
 
@@ -175,7 +175,7 @@ python video-composer/examples/gen-video.py "我的漫剧"
 
 | 需求 | 推荐操作 |
 |------|---------|
-| 快速出一张概念图 | 直接调用 `agnes-flash-suite` 文生图 |
+| 快速出一张概念图 | 直接调用 `Agnes-Flash-Suite-Skills` 文生图 |
 | 完整漫剧从 0 到成片 | 走主 Pipeline（3 步） |
 | 已有剧本，只要分镜图 | 跳过 Step 1，从 `storyboard-gen` 开始 |
 | 已有图片，想做成视频 | 从 `video-composer` 开始 |

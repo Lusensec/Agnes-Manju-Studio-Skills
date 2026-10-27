@@ -42,7 +42,10 @@ cp .env.example .env
 ```
 AGNESAI_API_KEY=sk-xxx
 COMIC_STUDIO_ROOT=/path/to/your/projects   # 自定义项目根目录（默认 ~/comic-studio/projects）
+AGNESAI_BASE_URL=https://api.agnes-ai.cn/v1   # /v1 根，脚本自行拼接 /videos 等路径；国际版 https://apihub.agnes-ai.com/v1
 ```
+
+> ⚠️ 主套件的 `AGNESAI_BASE_URL` 是 **/v1 根**；`Agnes-Flash-Suite-Skills/` 子套件的 `.env` 用 **host 根**（不带 `/v1`，其脚本自行拼接 `/v1/...`）。两者语义不同，请勿混用。
 
 > 💡 **Windows 注意**：中文 Windows 默认 GBK 控制台，脚本已内置 stdout/stderr 自动切 UTF-8，直接 `python xxx.py` 即可，无需手动 `chcp 65001`；生成的 JSON/SRT 一律 UTF-8。
 
@@ -186,14 +189,14 @@ agnes-comic-studio/
 ├── .env.example                      # API Key 模板
 ├── .gitignore
 │
-├── agnes-flash-suite/                # 子 Skill 1: 基础 API 调用
-│   ├── SKILL.md
-│   └── examples/
-│       ├── load_env.py
-│       ├── basic-chat.py
-│       ├── text-to-image.py
-│       ├── text-to-video.py
-│       └── poll-video.py
+├── Agnes-Flash-Suite-Skills/         # 子 Skill 1: 基础能力（按模型拆 4 个子 Skill，各自含 SKILL.md + examples/）
+│   ├── SKILL.md                      # 套件主文档（skill name 仍为 agnes-flash-suite）
+│   ├── README.md
+│   ├── .env.example
+│   ├── agnes-3.0-flash/               # Agent 编程: basic-chat / image-understanding / tool-calling / thinking-mode
+│   ├── agnes-2.5-flash/               # 对话/推理: 同上 4 个示例脚本
+│   ├── agnes-2.5-image-flash/         # 生图: text-to-image(±base64) / image-to-image / multi-image-combine
+│   └── agnes-2.5-video-flash/         # 生视频: text-to-video / keyframe / image-reference / audio-reference(±base64) / query-video
 │
 ├── script-writer/                    # 子 Skill 2: 剧本生成
 │   ├── SKILL.md
@@ -268,7 +271,7 @@ agnes-comic-studio/
 ## 作为 RikkaHub Skill 安装
 
 ```
-skill_install_from_url https://raw.githubusercontent.com/Lusensec/agnes-comic-studio/master/SKILL.md
+skill_install_from_url https://raw.githubusercontent.com/Lusensec/Agnes-Manju-Studio-Skills/master/SKILL.md
 ```
 
 安装后对 AI 说：
