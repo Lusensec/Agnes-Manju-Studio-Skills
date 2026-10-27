@@ -270,7 +270,11 @@ Agnes-Manju-Studio-Skills/
 
 ## 给 Agent 安装 Skill
 
-参考安装 Agent skill：https://raw.githubusercontent.com/Lusensec/Agnes-Manju-Studio-Skills/master/SKILL.md
+参考安装 Agent skill：
+
+```
+https://raw.githubusercontent.com/Lusensec/Agnes-Manju-Studio-Skills/master/SKILL.md
+```
 
 安装后对 Agent 说：
 - "用 douyin 预设帮我做 XX 漫剧"
