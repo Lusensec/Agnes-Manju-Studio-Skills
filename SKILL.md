@@ -1,7 +1,7 @@
 ---
-name: agnes-comic-studio
+name: agnes-manju-studio
 description: |
-  Agnes Comic Studio 漫剧/短视频创作套件（基于 Agnes AI Flash 系列）。统一入口，子 Skill 可独立使用。
+  Agnes Manju Studio 漫剧/短视频创作套件（基于 Agnes AI Flash 系列）。统一入口，子 Skill 可独立使用。
   将「故事概念 → 剧本 → 分镜图 → 短视频」完整流程拆解为可独立调用的子 Skill，每步结束后询问用户是否继续或修改。所有产出资产统一存储在项目文件夹下，用 SQLite 数据库追踪定位。
 
   子 Skill 列表：
@@ -16,7 +16,7 @@ description: |
 
   触发场景：漫剧创作、短视频制作、故事→剧本→分镜图→视频、分镜生图、图生视频、TTS 字幕合成、资产追踪。
 
-# Agnes Comic Studio
+# Agnes Manju Studio
 
 > 基于 Agnes AI Flash 系列的漫剧/短视频创作套件。统一入口，子 Skill 可独立使用。
 
@@ -35,7 +35,7 @@ description: |
 
 ## 资产目录结构
 
-每个项目自动创建如下文件夹（默认 `~/comic-studio/projects/<project-name>/`）：
+每个项目自动创建如下文件夹（默认 `~/manju-studio/projects/<project-name>/`）：
 
 ```
 project-name/

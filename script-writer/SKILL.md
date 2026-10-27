@@ -10,7 +10,7 @@ description: |
 
 ## 输入
 
-- 项目名（对应 `~/comic-studio/projects/<name>/`）
+- 项目名（对应 `~/manju-studio/projects/<name>/`）
 - 故事概念（自然语言）
 
 ## 输出

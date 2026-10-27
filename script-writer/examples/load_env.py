@@ -75,10 +75,13 @@ API_BASE_URL = (
     or "https://api.agnes-ai.cn/v1"
 )
 
-# Configurable project root: env var > .env > default
+# Configurable project root: MANJU_STUDIO_ROOT > legacy COMIC_STUDIO_ROOT > default
 PROJECT_ROOT = Path(
     os.environ.get(
-        "COMIC_STUDIO_ROOT",
-        str(Path.home() / "comic-studio" / "projects"),
+        "MANJU_STUDIO_ROOT",
+        os.environ.get(
+            "COMIC_STUDIO_ROOT",
+            str(Path.home() / "manju-studio" / "projects"),
+        ),
     )
 )

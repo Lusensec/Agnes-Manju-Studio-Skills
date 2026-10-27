@@ -1,4 +1,4 @@
-# Agnes Comic Studio 🎬
+# Agnes Manju Studio 🎬
 
 基于 **Agnes AI Flash** 系列的漫剧 / 短视频创作 Skill 套件。
 
@@ -41,7 +41,7 @@ cp .env.example .env
 可选环境变量（写入 `.env`）：
 ```
 AGNESAI_API_KEY=sk-xxx
-COMIC_STUDIO_ROOT=/path/to/your/projects   # 自定义项目根目录（默认 ~/comic-studio/projects）
+MANJU_STUDIO_ROOT=/path/to/your/projects   # 自定义项目根目录（默认 ~/manju-studio/projects；旧变量 COMIC_STUDIO_ROOT 仍兼容）
 AGNESAI_BASE_URL=https://api.agnes-ai.cn/v1   # /v1 根，脚本自行拼接 /videos 等路径；国际版 https://apihub.agnes-ai.com/v1
 ```
 
@@ -182,7 +182,7 @@ Step 4: gen-tts.py → gen-subtitles.py → final-compose.py
 ## 项目文件结构
 
 ```
-agnes-comic-studio/
+Agnes-Manju-Studio-Skills/
 │
 ├── SKILL.md                          # 主入口（RikkaHub Skill 格式）
 ├── README.md                         # 本文件

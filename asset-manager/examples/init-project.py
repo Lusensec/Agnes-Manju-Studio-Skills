@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Initialize a comic studio project folder structure + SQLite database.
+"""Initialize a manju studio project folder structure + SQLite database.
 
 Usage:
     python init-project.py "项目名"

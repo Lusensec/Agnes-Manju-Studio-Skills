@@ -24,7 +24,7 @@ description: |
 `init-project.py` 创建：
 
 ```
-~/comic-studio/projects/<name>/
+~/manju-studio/projects/<name>/
 ├── scripts/
 ├── images/
 ├── videos/

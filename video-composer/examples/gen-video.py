@@ -148,7 +148,7 @@ def upload_tts_audio(project: str, audio_files: list) -> dict:
         _git(["add", "-A"], cwd=cache)
         r = _git(["diff", "--cached", "--quiet"], cwd=cache)
         if r.returncode != 0:  # staged changes exist
-            _git(["-c", "user.name=comic-studio", "-c", "user.email=comic-studio@local",
+            _git(["-c", "user.name=manju-studio", "-c", "user.email=manju-studio@local",
                   "commit", "-q", "-m", f"{project}: update TTS audio references"], cwd=cache)
             p = _git(["push", "-q", "origin", branch], cwd=cache, timeout=300)
             if p.returncode != 0:
