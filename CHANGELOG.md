@@ -1,17 +1,28 @@
-# Changelog — Agnes Manju Studio v1.0
+# Changelog — Agnes Manju Studio
+
+> 最新代码版本：v1.0 首发（含 P0+P1 借鉴 manju-laoli 增强）。
+
+## v1.0
 
 首发正式版本。Python 3.9+ 标准库套件，将「故事概念 → 剧本 → 分镜图 → 短视频 → 成片」
 完整管线拆为可独立调用的子 Skill，全部本地运行、产出落盘到项目文件夹。
+
+借鉴 [manju-laoli-skill](https://github.com/lixiaoxiao9888-create/manju-laoli-skill) 的
+方法论层（其出片模型为 Seedance/MiniMax，我们落到 Agnes AI 模型线）：
+前置锁、确定性质量门、七段式提示词、打戏分镜、段缝衔接。
 
 ## 管线五步（含确认门）
 
 | Step | Skill | 关键能力 |
 |------|-------|---------|
-| 1 写剧本 | `script-writer` | 三维参数（`--tag` 题材 / `--emotion` 情绪 / `--rhythm` 节奏 / `--target-total` 总时长）、风格双轴（`--director-style` / `--style-extra`）、核心钩子、五路资产（characters / locations / costumes / props / weather） |
-| 1.5 总导演（可选） | `script-writer/gen-shotlist.py` | 场次 → 编号分镜（一镜一主动作、全局连号、`director_notes` 全局导演阐述），产物 `*-shotlist.json` |
+| 1 写剧本 | `script-writer` | 三维参数（`--tag` 题材 / `--emotion` 情绪 / `--rhythm` 节奏 / `--target-total` 总时长）、风格双轴（`--director-style` / `--style-extra`）、核心钩子、五路资产（characters / locations / costumes / props / weather）、前置锁（`--source` / `--strict`，借鉴 manju-laoli 五道前置锁） |
+| 1.5 总导演（可选） | `script-writer/gen-shotlist.py` | 场次 → 编号分镜（一镜一主动作、全局连号、`director_notes` 全局导演阐述），产物 `*-shotlist.json`；`--combat` 打戏分镜档（一镜一主动作一反馈、2-3s 细切、攻防互换） |
 | 2 分镜图 | `storyboard-gen` | 多参考 I2I（角色三视图 + 背景 + 道具，≤5 张）、五路资产上下文注入、`--shotlist` 镜级出图、逐槽容错 + `*-storyboard-status.json` 断点续跑（`--retry-failed`）、`gen-mosaic.py` 网格总览图 |
-| 3 视频 | `video-composer` | 图/文生视频（`--shotlist` 镜级）、多 key 并行（`AGNESAI_API_KEYS` 支持 `key@baseURL` 混平台）、429/503 退避重试、可选 TTS 音频参考嘴型同步、`*-video-status.json` 断点续跑 |
+| 3 视频 | `video-composer` | 图/文生视频（`--shotlist` 镜级）、多 key 并行（`AGNESAI_API_KEYS` 支持 `key@baseURL` 混平台）、429/503 退避重试、可选 TTS 音频参考嘴型同步、`*-video-status.json` 断点续跑；`--seven-segment` 七段式提示词、`--combat` 打戏、`--splice` 段缝衔接（上段尾帧做下段首参考图） |
 | 4 成片 | `post-production` | TTS 配音、字幕、BGM、场景对齐合成（edge-tts + ffmpeg） |
+
+质量门：`script-writer/validate-pipeline.py` 确定性检查（零 API、可复现）——台词字数 /
+场景完整性 / 资产引用不悬空 / 核心钩子 / 分镜连号 / 镜时长 / 槽位对账，出片前每个确认点跑一次。
 
 辅助：`asset-manager`（项目初始化 / 资产追踪 SQLite）、`Agnes-Flash-Suite-Skills`
 （Agnes 全能力基础套件：3.0/2.5 对话、生图、生视频四个子 skill）。
