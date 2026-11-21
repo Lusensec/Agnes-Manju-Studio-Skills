@@ -73,6 +73,28 @@ python examples/gen-shotlist.py "项目名" [--max-shots 60] [--seconds 5]
 shotlist 供下游 `gen-storyboard.py --shotlist` / `gen-video.py --shotlist` 逐镜生成，
 保持 `scene-<N>.png` / `scene-<N>.mp4` 命名，`merge-videos.py` 无需改动。
 
+**打戏档**：`python examples/gen-shotlist.py "项目名" --combat` 启用打戏专项分镜
+（一镜一主动作一反馈、2~N s 细切、攻防互换、起势→接触→顶点→反应→收束五拍），
+配下游 `gen-video.py --seven-segment --combat` 出片。
+
+### 前置锁（--source / --strict，借鉴 manju-laoli 五道前置锁）
+
+- 默认**建议模式**：打印前置锁清单（素材来源/节奏等），未指定项按默认值继续。
+- `--strict`：缺前置锁即停（exit 2），强制补齐。
+- `--source 原创|改编|对标爆款|热点速成` 记录素材来源进 config。
+
+### 确定性质量门（validate-pipeline.py，零 API 秒级）
+
+每个"用户确认点"前可跑一次，规则化检查（非 LLM，结果可复现）：
+
+```bash
+python examples/validate-pipeline.py "项目名" --stage all
+```
+
+检查项：S1 台词≤15 字 / S2 场景完整性 / S3 资产引用不悬空 / S4 核心钩子 /
+H1 分镜连号 / H2 分镜帧文本 / H3 镜时长 4-12s / H4 场景覆盖 / M1 槽位对账。
+FAIL 项建议修正后再出片，WARN 酌情处理。
+
 ## 用户确认点
 
 运行结束后打印下一步建议。**Agent 必须展示结果并等用户确认后才继续，不得自动执行下一步。**
@@ -98,7 +120,9 @@ shotlist 供下游 `gen-storyboard.py --shotlist` / `gen-video.py --shotlist` �
 
 | 脚本 | 参数 |
 |------|------|
-| `examples/write-script.py` | `[项目名] [故事概念] [风格] [方向] [时长] [尺寸] [--tag --emotion --rhythm --target-total --director-style --style-extra]` |
-| `examples/gen-shotlist.py` | `[项目名] [--max-shots N] [--seconds N]` |
+| `examples/write-script.py` | `[项目名] [故事概念] [风格] [方向] [时长] [尺寸] [--tag --emotion --rhythm --target-total --director-style --style-extra --source --strict]` |
+| `examples/gen-shotlist.py` | `[项目名] [--max-shots N] [--seconds N] [--combat]` |
+| `examples/validate-pipeline.py` | `[项目名] [--stage script\|shotlist\|all] [--max-dialogue N]`（确定性质量门，零 API） |
 | `examples/refine-script.py` | `[项目名] [角色名] [新描述]` |
 | `examples/load_env.py` | 无 |
+| `examples/prelock.py` | 前置锁清单（内部使用，write-script 自动调用） |

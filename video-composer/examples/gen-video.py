@@ -43,8 +43,16 @@ scene-<shot>.mp4 so merge-videos.py and the image-URL refs
 
 Usage:
     python gen-video.py "项目名" [--scene N] [--duration 5]
-    python gen-video.py "项目名" --shotlist
-    python gen-video.py "项目名" --retry-failed
+    python gen-video.py "项目名" --shotlist [--seven-segment] [--combat] [--splice]
+
+--shotlist        work per SHOT from gen-shotlist.py (clips named scene-<shot>.mp4)
+--seven-segment   compose the video prompt as 7 labelled segments
+                  (SHOT/ACTION/DIALOG/MOOD/CAMERA/SOUND/CUT) instead of free text
+--combat          add combat pacing cues to the seven-segment [ACTION] segment
+--splice          段缝衔接: freeze the last frame of each clip and feed the
+                  previous clip's last-frame image as this clip's first reference
+                  (cross-shot continuity, borrowed from manju-laoli D-lock)
+--retry-failed    only redo slots that failed in a previous run (status ledger)
 """
 import json
 import os
@@ -61,6 +69,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from load_env import API_KEY, API_BASE_URL, PROJECT_ROOT
 from track import track_file
+from prompt_builder import build_seven_segment
 
 VIDEO_INTERVAL_SEC = 65
 
@@ -520,6 +529,9 @@ def main():
     duration = None
     use_shotlist = False
     retry_failed = False
+    seven_seg = False
+    splice = False
+    combat = False
     if "--scene" in sys.argv:
         scene_filter = int(sys.argv[sys.argv.index("--scene") + 1])
     if "--duration" in sys.argv:
@@ -528,6 +540,12 @@ def main():
         use_shotlist = True
     if "--retry-failed" in sys.argv:
         retry_failed = True
+    if "--seven-segment" in sys.argv:
+        seven_seg = True
+    if "--splice" in sys.argv:
+        splice = True
+    if "--combat" in sys.argv:
+        combat = True
 
     proj_dir = PROJECT_ROOT / project
     video_dir = proj_dir / "videos"
@@ -555,13 +573,18 @@ def main():
         notes = str(shotlist.get("director_notes", ""))[:120]
         scenes = []
         for s in shots:
-            desc = f"{s.get('frame', '')}. Camera: {s.get('camera', '')}"
-            if notes:
-                desc += f" Continuity: {notes}"
-            scenes.append({"scene_id": s.get("shot", 0), "title": s.get("title", ""),
-                           "description": desc,
-                           "description_zh": f"{s.get('title', '')} | {s.get('camera', '')}",
-                           "seconds": s.get("seconds")})
+            desc = s.get("frame", "")
+            scenes.append({
+                "scene_id": s.get("shot", 0),
+                "title": s.get("title", ""),
+                "description": desc,
+                "description_zh": s.get("title", ""),
+                "camera": s.get("camera", ""),
+                "mood": (f"continuity: {notes}" if notes else "") or s.get("mood", ""),
+                "dialogue": s.get("dialogue", ""),
+                "seconds": s.get("seconds"),
+                "shot_ref": s.get("scene_id"),
+            })
         if duration is None:
             duration = validate_duration(str(shotlist.get("seconds_default",
                               config.get("video_duration", "5"))))
@@ -618,6 +641,15 @@ def main():
     print(f"   预计总耗时: ~{est_min} 分钟\n")
 
     # ---- build per-scene work items (refs / prompt / audio refs) ----
+    # 段缝衔接: record each slot's predecessor so --splice can feed the
+    # previous clip's last-frame image as this clip's first reference.
+    ordered = sorted(scenes, key=lambda s: s.get("scene_id", 0))
+    prev_map = {}
+    for i, sc in enumerate(ordered):
+        if i > 0:
+            prev_map[sc.get("scene_id")] = ordered[i - 1].get("scene_id")
+        sc.setdefault("prev_scene_id", prev_map.get(sc.get("scene_id")))
+
     work_items = []
     slots = {}
     for scene in scenes:
@@ -642,14 +674,44 @@ def main():
         style = config.get("style", "动画")
         style_word = {"动画": "anime", "写实": "cinematic", "水墨": "ink wash",
                       "赛博朋克": "cyberpunk", "二次元": "2D anime"}.get(style, "anime")
-        prompt = f"{style_word} style, smooth animation. {desc_en}. {desc_zh[:60]}"
 
+        # TTS audio references for this slot
         scene_audios = [tts_urls[f"line-{sid}-{n}.mp3"]
                         for n in range(1, 4) if f"line-{sid}-{n}.mp3" in tts_urls]
-        if scene_audios:
-            markers = " ".join(f"<Audio {k+1}>" for k in range(len(scene_audios)))
-            prompt += (f" The character is speaking; the mouth moves naturally, "
-                       f"in sync with the reference audio {markers}.")
+
+        # 段缝衔接 (P1-c): freeze last frame -> reuse as next clip's first frame
+        freeze_last = splice
+        if splice:
+            prev_sid = scene.get("prev_scene_id")
+            if prev_sid:
+                prev_key = f"scene-{prev_sid}"
+                if prev_key in image_urls:
+                    refs.insert(0, image_urls[prev_key])  # strongest ref = prev last frame
+                    refs = refs[:5]
+            scene["_splice"] = True
+
+        if seven_seg:
+            dialogue = scene.get("dialogue")
+            if scene_audios:
+                dialogue = (dialogue or "") + (" " if dialogue else "") \
+                    + " ".join(f"<Audio {k+1}>" for k in range(len(scene_audios)))
+            prompt = build_seven_segment(
+                desc_en, desc_zh, style_word,
+                dialogues=(dialogue or "").strip() or None,
+                camera=scene.get("camera"),
+                mood=scene.get("mood"),
+                sound=scene.get("sound"),
+                freeze_last=freeze_last,
+                combat=combat,
+            )
+        else:
+            prompt = f"{style_word} style, smooth animation. {desc_en}. {desc_zh[:60]}"
+            if scene.get("camera"):
+                prompt += f" Camera: {scene['camera']}"
+            if scene_audios:
+                markers = " ".join(f"<Audio {k+1}>" for k in range(len(scene_audios)))
+                prompt += (f" The character is speaking; the mouth moves naturally, "
+                           f"in sync with the reference audio {markers}.")
 
         work_items.append({"sid": sid, "out_file": out_file, "refs": refs,
                           "prompt": prompt, "audios": scene_audios,

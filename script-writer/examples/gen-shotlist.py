@@ -8,7 +8,8 @@
 Output: scripts/<project>-shotlist.json
 
 Usage:
-    python gen-shotlist.py "项目名" [--max-shots 60] [--seconds 5] [--model agnes-3.0-flash]
+    python gen-shotlist.py "项目名" [--max-shots 60] [--seconds 5] [--model agnes-3.0-flash] [--combat]
+    --combat: 打戏专项分镜（一镜一主动作一反馈、2~N s 细切、攻防互换、五拍组织）
 """
 import json
 import sys
@@ -111,6 +112,7 @@ def main():
     project = args[0]
 
     max_shots, seconds, model = 60, 5, "agnes-3.0-flash"
+    combat = False
     i = 1
     while i < len(args):
         if args[i] == "--max-shots":
@@ -119,6 +121,8 @@ def main():
             seconds = max(4, min(12, int(args[i + 1]))); i += 2
         elif args[i] == "--model":
             model = args[i + 1]; i += 2
+        elif args[i] == "--combat":
+            combat = True; i += 1
         else:
             i += 1
 
@@ -146,10 +150,21 @@ def main():
     else:
         est = min(max_shots, n_scenes * 4)
 
+    combat_block = ""
+    if combat:
+        combat_block = f"""
+打戏专项规则（--combat 档，借鉴漫剧老李打戏引擎）：
+- 一镜一个主动作 + 一个反馈，颗粒度 2~{seconds} 秒细切
+- 攻防力量互换，禁止"沙包对手"（对手必须有反制动作）
+- 镜头按"起势→接触→顶点→反应→收束"五拍组织，每拍一个 shot
+- frame 写清双方站位、距离、受力方向；camera 用"跟拍/甩镜/特写切"配合打击点
+- 终结技单独一镜，末镜留定格尾帧（供下一段首帧承接）
+"""
+
     prompt = f"""项目名: {project}
 画面: {aspect_ratio} | 视觉风格: {style}{(' + ' + style_extra) if style_extra else ''}{(' | 导演风格: ' + director_style) if director_style else ''}
 每镜时长: {seconds} 秒 | 总镜头数上限: {est}（不超过 {max_shots}）
-
+{combat_block}
 角色外形基准（frame 中必须一致沿用）：
 {char_brief}
 
@@ -183,6 +198,7 @@ def main():
     shotlist["project"] = project
     shotlist["model"] = model
     shotlist["seconds_default"] = seconds
+    shotlist["combat"] = combat
     shotlist["stats"] = {
         "n_scenes": n_scenes,
         "n_shots": len(shotlist["shots"]),
@@ -196,7 +212,8 @@ def main():
                f"镜数={shotlist['stats']['n_shots']},每镜={seconds}s")
 
     print(f"✅ shotlist 已保存: {out}")
-    print(f"   {shotlist['stats']['n_shots']} 镜 | 总时长 {shotlist['stats']['total_seconds']}s")
+    print(f"   {shotlist['stats']['n_shots']} 镜 | 总时长 {shotlist['stats']['total_seconds']}s"
+          + (" | 打戏档" if combat else ""))
     print(f"   导演阐述: {str(shotlist.get('director_notes', ''))[:80]}...")
     print("\n下一步：")
     print(f"  [1] 逐镜出图 → python storyboard-gen/examples/gen-storyboard.py \"{project}\" --shotlist")

@@ -76,6 +76,9 @@ python examples/gen-video.py "项目名" --scene 3
 # 镜级模式（总导演 shotlist，逐镜出视频）
 python examples/gen-video.py "项目名" --shotlist
 
+# 七段式提示词 + 打戏 + 段缝衔接（借鉴 manju-laoli）
+python examples/gen-video.py "项目名" --shotlist --seven-segment --combat --splice
+
 # 断点续跑（只补失败/缺失槽，状态账本 scripts/<项目>-video-status.json）
 python examples/gen-video.py "项目名" --retry-failed
 
@@ -89,6 +92,20 @@ python examples/merge-videos.py "项目名"
 每轮结束都会写 `scripts/<项目>-video-status.json`（逐槽 success/error+reason/pending），
 失败原因可据此定位（400=参考 URL 不可达/参数错；429/503=限流或队列满）；
 `--retry-failed` 只重做失败槽。
+
+### 提示词与段缝（借鉴 manju-laoli）
+
+| 标志 | 作用 |
+|------|------|
+| `--seven-segment` | 视频提示词按 7 段结构组装：[SHOT]景别 / [ACTION]动作 / [DIALOG]对白 / [MOOD]情绪 / [CAMERA]运镜 / [SOUND]声音 / [CUT]转场，比自由文本更可控 |
+| `--combat` | 打戏档：[ACTION] 追加"一镜一主动作一反馈、2-3s 细切、攻防互换、禁沙包对手"（配合 gen-shotlist `--combat` 出的分镜） |
+| `--splice` | 段缝衔接：上段尾帧定格（[CUT] 写 freeze 指令）+ 前段分镜图作为本段首参考图，减少段间跳切 |
+
+出片前建议先跑确定性质量门（零 API，秒级）：
+
+```bash
+python script-writer/examples/validate-pipeline.py "项目名" --stage all
+```
 
 ## 用户确认点
 
@@ -136,7 +153,7 @@ python examples/merge-videos.py "项目名"
 
 | 脚本 | 参数 |
 |------|------|
-| `examples/gen-video.py` | `[项目名] [--scene N] [--duration N] [--shotlist] [--retry-failed]` |
+| `examples/gen-video.py` | `[项目名] [--scene N] [--duration N] [--shotlist] [--seven-segment] [--combat] [--splice] [--retry-failed]` |
 | `examples/poll-video.py` | `<video_id> [api_key]` |
 | `examples/merge-videos.py` | `[项目名]` |
 | `examples/load_env.py` | 无 |

@@ -16,6 +16,9 @@ Usage:
     --director-style 史诗历史|悬疑|喜剧|治愈|无        导演风格（叙事/镜头倾向）
     --style-extra "..."                                  风格自由补充说明
     --hook / --no-hook                                   强制/禁止核心钩子（默认按节奏自动）
+    前置锁（借鉴 manju-laoli，可选）：
+    --source 原创|改编|对标爆款|热点速成                 素材来源（--strict 时未指定即停）
+    --strict                                              缺前置锁即停（exit 2），否则按默认值继续
 
 Examples:
     python write-script.py "项目" "概念"
@@ -32,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from load_env import API_KEY, PROJECT_ROOT
 from track import track_file
+from prelock import render_checklist, check_strict
 
 BASE = "https://api.agnes-ai.cn/v1/chat/completions"
 
@@ -120,7 +124,7 @@ def parse_args(argv: list) -> dict:
         tok = argv[i]
         if tok.startswith("--"):
             key = tok.lstrip("-")
-            if key in ("hook", "no-hook"):
+            if key in ("hook", "no-hook", "strict"):
                 a["flags"][key] = True
             else:
                 i += 1
@@ -175,6 +179,18 @@ def main():
     target_total = flags.get("target-total", "")
     director_style = flags.get("director-style", "")
     style_extra = flags.get("style-extra", "")
+    source = flags.get("source", "")
+    strict = bool(flags.get("strict"))
+
+    # ---- pre-flight lock checklist (borrowed from manju-laoli 五道前置锁) ----
+    lock_flags = {"source": source, "orientation": orientation, "rhythm": rhythm, "tag": tag}
+    miss = check_strict(lock_flags)
+    print(render_checklist(lock_flags))
+    if strict and miss:
+        names = "、".join(miss)
+        print(f"\n[STOP] --strict 模式下未指定前置锁: {names}")
+        print(f"       请补全后重跑，例如: --source 原创 --rhythm 快 --tag {TAGS[0]}")
+        sys.exit(2)
 
     # Validate
     valid_orient = ["landscape", "portrait"]
@@ -235,6 +251,7 @@ def main():
 
     prompt = f"""项目名: {project}
 故事概念: {concept}
+素材来源: {source or '原创'}
 题材标签: {tag or '（未指定，按概念自选最贴近的一种）'}
 核心情绪线: {emotion or '（未指定）'}
 节奏: {rhythm or '中'}（每场 {duration} 秒，场景数 {scene_range}）
@@ -282,6 +299,7 @@ def main():
         "emotion": emotion,
         "rhythm": rhythm,
         "target_total": target_total,
+        "source": source,
         "hook": script.get("hook", ""),
     }
     script["config"] = config
