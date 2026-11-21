@@ -8,8 +8,10 @@
 Output: scripts/<project>-shotlist.json
 
 Usage:
-    python gen-shotlist.py "项目名" [--max-shots 60] [--seconds 5] [--model agnes-3.0-flash] [--combat]
-    --combat: 打戏专项分镜（一镜一主动作一反馈、2~N s 细切、攻防互换、五拍组织）
+    python gen-shotlist.py "项目名" [--max-shots 60] [--seconds 5] [--model agnes-3.0-flash]
+                          [--combat] [--blocking]
+    --combat     打戏专项分镜（一镜一主动作一反馈、2~N s 细切、攻防互换、五拍组织）
+    --blocking   场面调度档：多人戏输出 blocking（场景坐标系+人物站位+权力几何+群像 A/B/C 开关）
 """
 import json
 import sys
@@ -24,11 +26,12 @@ from track import track_file
 BASE = "https://api.agnes-ai.cn/v1/chat/completions"
 
 
-def call_agnes(prompt: str, model: str, max_tokens: int = 8192) -> str:
+def call_agnes(prompt: str, model: str, max_tokens: int = 8192,
+               system: str = None) -> str:
     data = json.dumps({
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system or SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.7,
@@ -89,6 +92,26 @@ SYSTEM_PROMPT = """你是专业漫剧总导演。任务：把给定剧本的场�
 5. dialogue 只能取自该 scene 的台词（可拆句），不得新增台词。
 6. 若剧本带 氛围/天气/道具 等资产信息，把它融进 frame 的环境与光线描述。"""
 
+# 场面调度档（--blocking，借鉴 manju-laoli blocking-direction 的导演决策层）
+BLOCKING_EXTRA = """
+
+场面调度专项（--blocking 档，多人戏必开）：
+每个 shot 额外输出 "blocking" 对象，结构：
+{
+  "blocking": {
+    "coordinate": "场景坐标系（只在该 scene 第一个 shot 写一次）：方位基(北=主窗/门)+垂直层级(地面/台阶/高台)+中央活动区+固定物(可依托的立柱/长桌/擂台等)",
+    "positions": ["@角色A：{绝对方位·靠固定物} · 朝向{方位} · 姿态{立/坐/俯} ", "..."],
+    "power": "权力几何一句话：谁高谁低（高度差/遮挡/距离/取景半径如何表达关系变化）",
+    "crowd": "A|B|C（A=逐人派事务 / B=只写密度句 / C=除具名外无他人）"
+  }
+}
+站位三条硬规则：
+- 绝对方位优先：能用"北/南/东/西 + 固定物"就不用"画面左/右"（画面方位随镜头翻转，真实方位不会）
+- 每步有依托：人物落位绑定固定物，悬空站位是漂移第一来源
+- 写一次全段引：坐标系建好后，后续 shot 的 positions 只写增量位移（如"@角色A：北窗下 → 中央活动区"），不重复抄坐标系
+- 群像开关逐 shot 显式标 A/B/C，禁沉默（不裁=模型自己猜）
+单场景戏（同一 scene 仅一个角色活动）可省略 blocking。"""
+
 
 def asset_brief(script: dict, max_each: int = 4) -> str:
     parts = []
@@ -113,6 +136,7 @@ def main():
 
     max_shots, seconds, model = 60, 5, "agnes-3.0-flash"
     combat = False
+    blocking = False
     i = 1
     while i < len(args):
         if args[i] == "--max-shots":
@@ -123,6 +147,8 @@ def main():
             model = args[i + 1]; i += 2
         elif args[i] == "--combat":
             combat = True; i += 1
+        elif args[i] == "--blocking":
+            blocking = True; i += 1
         else:
             i += 1
 
@@ -161,11 +187,13 @@ def main():
 - 终结技单独一镜，末镜留定格尾帧（供下一段首帧承接）
 """
 
+    system = SYSTEM_PROMPT + (BLOCKING_EXTRA if blocking else "")
+    blocking_note = "\n多人戏请输出 blocking 字段（坐标系+站位+权力几何+群像开关）。\n" if blocking else ""
     prompt = f"""项目名: {project}
 画面: {aspect_ratio} | 视觉风格: {style}{(' + ' + style_extra) if style_extra else ''}{(' | 导演风格: ' + director_style) if director_style else ''}
 每镜时长: {seconds} 秒 | 总镜头数上限: {est}（不超过 {max_shots}）
 {combat_block}
-角色外形基准（frame 中必须一致沿用）：
+{blocking_note}角色外形基准（frame 中必须一致沿用）：
 {char_brief}
 
 资产上下文（可融入 frame 的环境/光线）：
@@ -176,11 +204,12 @@ def main():
 
 请输出完整 shotlist JSON（director_notes + shots + total_seconds）。"""
 
-    print(f"🎬 总导演展开: {project}（{n_scenes} 场 → ≤{est} 镜，每镜 {seconds}s）...")
+    print(f"🎬 总导演展开: {project}（{n_scenes} 场 → ≤{est} 镜，每镜 {seconds}s"
+          + (" | 打戏" if combat else "") + (" | 场面调度" if blocking else "") + "）...")
     shotlist = None
     last_raw = ""
     for attempt in range(2):
-        raw = call_agnes(prompt, model=model)
+        raw = call_agnes(prompt, model=model, system=system)
         last_raw = raw
         shotlist = extract_json(raw)
         if shotlist:
@@ -199,6 +228,7 @@ def main():
     shotlist["model"] = model
     shotlist["seconds_default"] = seconds
     shotlist["combat"] = combat
+    shotlist["blocking"] = blocking
     shotlist["stats"] = {
         "n_scenes": n_scenes,
         "n_shots": len(shotlist["shots"]),

@@ -125,16 +125,18 @@ Agent 在用户给出故事概念后，应主动询问：
 # 初始化项目
 python asset-manager/examples/init-project.py "我的漫剧"
 
-# Step 1: 写剧本（可加三维参数：--tag 逆袭爽文 --emotion 爽 --rhythm 快 --target-total 180 --director-style 悬疑）
-python script-writer/examples/write-script.py "我的漫剧" "一个宇航员在太空遇见一条会说话的鱼"
+# Step 1: 写剧本（可加三维参数 + 画风锁 + 连载）
+python script-writer/examples/write-script.py "我的漫剧" "一个宇航员在太空遇见一条会说话的鱼" \
+    --tag 逆袭爽文 --rhythm 快 --target-total 180 \
+    --style-bible 国漫高燃 --from-series --episode 1
 
-# Step 1.5（可选）: 总导演镜级拆分（打戏题材加 --combat）
-python script-writer/examples/gen-shotlist.py "我的漫剧" [--combat]
+# Step 1.5（可选）: 总导演镜级拆分（打戏题材 --combat；多人戏 --blocking）
+python script-writer/examples/gen-shotlist.py "我的漫剧" [--combat] [--blocking]
 
 # 质量门（零 API，出片前秒级检查台词/分镜/资产/槽位）
 python script-writer/examples/validate-pipeline.py "我的漫剧" --stage all
 
-# 用户确认后 → Step 2: 生成分镜图（有 shotlist 时加 --shotlist）
+# 用户确认后 → Step 2: 生成分镜图（有 shotlist 时加 --shotlist；画风锁自动读剧本 config.style_bible）
 python storyboard-gen/examples/gen-storyboard.py "我的漫剧"
 
 # 总览确认（可选）: 网格拼图一眼看全批

@@ -130,6 +130,9 @@ def main():
     config = script.get("config", {})
     style = config.get("style", "动画")
     style_prefix = STYLE_PREFIX.get(style, "")
+    # 画风锁（--style-bible）：优先用参数化块，替代/叠加风格前缀
+    sb = config.get("style_bible") or {}
+    style_bible_block = sb.get("block_en", "")
     if image_size is None:
         image_size = config.get("image_size", "1K")
         sleep_sec = SLEEP_BY_SIZE.get(image_size, 3)
@@ -217,7 +220,9 @@ def main():
         if refs:
             ref_desc = f" [Reference images: {', '.join([r.split('/')[-1][:20] for r in refs])}]"
         ctx = asset_context(script, scene_raw) if mode == "scene" else ""
-        prompt = f"{style_prefix}{desc_en}. Maintain character consistency with reference images.{ref_desc}"
+        # 画风锁参数块优先于风格前缀（二者都带则拼，风格前缀仍保底）
+        prefix = f"{style_bible_block} " if style_bible_block else style_prefix
+        prompt = f"{prefix}{desc_en}. Maintain character consistency with reference images.{ref_desc}"
         if ctx:
             prompt += f" [Asset context: {ctx}]"
         if shotlist:

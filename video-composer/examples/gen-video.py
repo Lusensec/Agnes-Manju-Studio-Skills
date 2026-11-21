@@ -584,6 +584,7 @@ def main():
                 "dialogue": s.get("dialogue", ""),
                 "seconds": s.get("seconds"),
                 "shot_ref": s.get("scene_id"),
+                "blocking": s.get("blocking"),
             })
         if duration is None:
             duration = validate_duration(str(shotlist.get("seconds_default",
@@ -592,6 +593,9 @@ def main():
     if duration is None:
         duration = validate_duration(str(config.get("video_duration", "5")))
     aspect_ratio = config.get("aspect_ratio", "16:9")
+    # 画风锁参数块（循环外算一次，供七段式 [SHOT] / 非七段式前缀复用）
+    _sb = config.get("style_bible") or {}
+    style_bible_block = _sb.get("block_en", "")
 
     # Load stored image URLs (for reference mode)
     image_urls = load_image_urls(project)
@@ -703,9 +707,12 @@ def main():
                 sound=scene.get("sound"),
                 freeze_last=freeze_last,
                 combat=combat,
+                blocking=scene.get("blocking"),
+                style_block=style_bible_block or None,
             )
         else:
-            prompt = f"{style_word} style, smooth animation. {desc_en}. {desc_zh[:60]}"
+            base = f"{style_bible_block} " if style_bible_block else f"{style_word} style, "
+            prompt = f"{base}smooth animation. {desc_en}. {desc_zh[:60]}"
             if scene.get("camera"):
                 prompt += f" Camera: {scene['camera']}"
             if scene_audios:

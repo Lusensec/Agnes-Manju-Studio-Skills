@@ -77,7 +77,32 @@ shotlist 供下游 `gen-storyboard.py --shotlist` / `gen-video.py --shotlist` �
 （一镜一主动作一反馈、2~N s 细切、攻防互换、起势→接触→顶点→反应→收束五拍），
 配下游 `gen-video.py --seven-segment --combat` 出片。
 
-### 前置锁（--source / --strict，借鉴 manju-laoli 五道前置锁）
+**场面调度档**：`python examples/gen-shotlist.py "项目名" --blocking` 让多人戏输出
+`blocking`（场景坐标系 + 人物绝对方位站位 + 权力几何 + 群像 A/B/C 开关），
+七段式 `[SHOT]` 自动消费它（绝对方位优先，避免"画面左右"随镜头翻转而漂移）。
+
+### 画风锁（--style-bible，借鉴 manju-laoli I 锁）
+
+把命名风格转成**参数化提示词块**（零人名，交付层不出现导演名）：
+
+```bash
+python examples/write-script.py "项目" "概念" 二次元 portrait 5 1K --style-bible 国漫高燃
+```
+
+可选风格：新派武侠 / 都市抽帧 / 水墨写意 / 赛博夜城 / 国漫高燃 / 治愈日常 / 悬疑冷调 / 史诗历史。
+画风块写入剧本 `config.style_bible`，`gen-storyboard.py` / `gen-video.py` 自动注入所有场景与视频提示词。
+
+### 多集连载（--from-series / --episode，借鉴 manju-laoli 跨集连续性台账）
+
+```bash
+# 第 N 集：载入上集台账（角色外形/服装/伏笔/结尾状态）注入本集，本集结束后自动登记
+python examples/write-script.py "项目" "概念" ... --from-series --episode 2
+```
+
+台账存 `scripts/<项目>-series.json`（角色账/场景账/未回收伏笔/上集结尾状态）。
+配合 `gen-video.py --splice`，本集首镜可承接上集结尾状态，跨集角色不崩。
+
+### 确定性质量门（validate-pipeline.py，零 API 秒级）
 
 - 默认**建议模式**：打印前置锁清单（素材来源/节奏等），未指定项按默认值继续。
 - `--strict`：缺前置锁即停（exit 2），强制补齐。
@@ -92,6 +117,7 @@ python examples/validate-pipeline.py "项目名" --stage all
 ```
 
 检查项：S1 台词≤15 字 / S2 场景完整性 / S3 资产引用不悬空 / S4 核心钩子 /
+S5 画风锁注入 / S6 连载角色登记 /
 H1 分镜连号 / H2 分镜帧文本 / H3 镜时长 4-12s / H4 场景覆盖 / M1 槽位对账。
 FAIL 项建议修正后再出片，WARN 酌情处理。
 
@@ -120,9 +146,11 @@ FAIL 项建议修正后再出片，WARN 酌情处理。
 
 | 脚本 | 参数 |
 |------|------|
-| `examples/write-script.py` | `[项目名] [故事概念] [风格] [方向] [时长] [尺寸] [--tag --emotion --rhythm --target-total --director-style --style-extra --source --strict]` |
-| `examples/gen-shotlist.py` | `[项目名] [--max-shots N] [--seconds N] [--combat]` |
+| `examples/write-script.py` | `[项目名] [故事概念] [风格] [方向] [时长] [尺寸] [--tag --emotion --rhythm --target-total --director-style --style-extra --source --strict --style-bible --from-series --episode N]` |
+| `examples/gen-shotlist.py` | `[项目名] [--max-shots N] [--seconds N] [--combat] [--blocking]` |
 | `examples/validate-pipeline.py` | `[项目名] [--stage script\|shotlist\|all] [--max-dialogue N]`（确定性质量门，零 API） |
 | `examples/refine-script.py` | `[项目名] [角色名] [新描述]` |
+| `examples/style-lock.py` | 画风锁参数库（内部使用，write-script 自动调用；`python style-lock.py` 列出风格） |
+| `examples/series.py` | 连载连续性台账（内部使用，--from-series 自动调用；`python series.py <项目>` 查看台账） |
 | `examples/load_env.py` | 无 |
 | `examples/prelock.py` | 前置锁清单（内部使用，write-script 自动调用） |

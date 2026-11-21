@@ -19,6 +19,12 @@ Usage:
     前置锁（借鉴 manju-laoli，可选）：
     --source 原创|改编|对标爆款|热点速成                 素材来源（--strict 时未指定即停）
     --strict                                              缺前置锁即停（exit 2），否则按默认值继续
+    画风锁（借鉴 manju-laoli I 锁，可选）：
+    --style-bible 新派武侠|都市抽帧|水墨写意|赛博夜城|国漫高燃|治愈日常|悬疑冷调|史诗历史
+                                                        转成参数化提示词块注入所有场景（零人名）
+    多集连载（借鉴 manju-laoli 跨集连续性台账，可选）：
+    --from-series                                     载入 <项目>-series.json 台账（角色/服装/伏笔/结尾状态）注入本集
+    --episode N                                       本集集数（登记进台账；缺省=下一集序号）
 
 Examples:
     python write-script.py "项目" "概念"
@@ -36,6 +42,16 @@ sys.path.insert(0, str(Path(__file__).parent))
 from load_env import API_KEY, PROJECT_ROOT
 from track import track_file
 from prelock import render_checklist, check_strict
+import importlib.util as _ilu
+
+def _load_sibling(name: str, fname: str):
+    """Load a hyphen-named sibling module (e.g. style-lock.py, series.py)."""
+    spec = _ilu.spec_from_file_location(name, str(Path(__file__).parent / fname))
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+style_lock = _load_sibling("style_lock", "style-lock.py")
 
 BASE = "https://api.agnes-ai.cn/v1/chat/completions"
 
@@ -124,7 +140,7 @@ def parse_args(argv: list) -> dict:
         tok = argv[i]
         if tok.startswith("--"):
             key = tok.lstrip("-")
-            if key in ("hook", "no-hook", "strict"):
+            if key in ("hook", "no-hook", "strict", "from-series"):
                 a["flags"][key] = True
             else:
                 i += 1
@@ -180,6 +196,9 @@ def main():
     director_style = flags.get("director-style", "")
     style_extra = flags.get("style-extra", "")
     source = flags.get("source", "")
+    style_bible = flags.get("style-bible", "")
+    episode = flags.get("episode", "")
+    from_series = bool(flags.get("from-series"))
     strict = bool(flags.get("strict"))
 
     # ---- pre-flight lock checklist (borrowed from manju-laoli 五道前置锁) ----
@@ -210,6 +229,22 @@ def main():
         sys.exit(1)
     if director_style and director_style not in DIRECTOR_STYLES:
         print(f"[WARN] 未知导演风格 {director_style}，可选: {DIRECTOR_STYLES}（仍按原值生成）")
+
+    # 画风锁（--style-bible）：把命名风格转成参数化提示词块（零人名）
+    style_block_en = ""
+    style_block_zh = ""
+    style_forbidden = ""
+    if style_bible:
+        try:
+            s = style_lock.get(style_bible)
+            style_block_en = style_lock.block(style_bible)
+            style_block_zh = s["block_zh"]
+            style_forbidden = s["forbidden"]
+            print(f"   画风锁: {s['label']}")
+        except KeyError as e:
+            print(f"[ERROR] {e}")
+            print(f"       可用: {style_lock.list_styles()}")
+            sys.exit(1)
 
     # duration: explicit positional > rhythm default > "5"
     if not duration:
@@ -249,16 +284,35 @@ def main():
     ]
     print("\n".join(lines))
 
+    # 多集连载（--from-series）：注入上一集的连续性台账
+    series_brief = ""
+    if from_series:
+        series = _load_sibling("series", "series.py")
+        series_brief = series.handoff_brief(project)
+        if series_brief:
+            print("🔗 连载台账已载入（跨集角色/伏笔/结尾状态）")
+        if episode:
+            episode = str(episode)
+            print(f"   当前集: 第 {episode} 集")
+
+    series_line = ""
+    if series_brief:
+        series_line = "连载上下文（跨集一致性基准，角色外形/服装/伏笔/结尾状态以此为准）:\n" + series_brief + "\n"
+    style_bible_line = ""
+    if style_block_en:
+        style_bible_line = "画风锁（所有场景 description 英文提示词末尾必须逐字带上此参数块，并遵守禁项）: " + style_block_en
+
     prompt = f"""项目名: {project}
 故事概念: {concept}
 素材来源: {source or '原创'}
-题材标签: {tag or '（未指定，按概念自选最贴近的一种）'}
+{series_line}题材标签: {tag or '（未指定，按概念自选最贴近的一种）'}
 核心情绪线: {emotion or '（未指定）'}
 节奏: {rhythm or '中'}（每场 {duration} 秒，场景数 {scene_range}）
 总目标时长: {target_total + ' 秒' if target_total else '未指定'}
 视觉风格: {style}
 导演风格: {director_style or '（未指定，默认自然叙事）'}
 风格补充: {style_extra or '（无）'}
+{style_bible_line}
 画面方向: {ratio_label}({aspect_ratio})
 每场景时长: {duration} 秒
 钩子要求: {hook_req}
@@ -301,12 +355,25 @@ def main():
         "target_total": target_total,
         "source": source,
         "hook": script.get("hook", ""),
+        "style_bible": {
+            "name": style_bible,
+            "block_en": style_block_en,
+            "block_zh": style_block_zh,
+            "forbidden": style_forbidden,
+        } if style_bible else {},
     }
     script["config"] = config
     script["created_at"] = datetime.now(timezone.utc).isoformat()
 
     out = script_dir / f"{project}-script.json"
     out.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 多集连载：把本集登记进连续性台账（角色/服装/伏笔/结尾状态）
+    if from_series:
+        _series3 = _load_sibling("series", "series.py")
+        _series3.record_episode(project, int(episode or len(_series3.load(project).get("episodes", [])) + 1), script)
+        print(f"📚 本集已登记进连载台账: {out.parent.name}/{_series3.load(project).get('project', project)}-series.json")
+
     tag_str = f"题材={tag},情绪={emotion},节奏={rhythm}" if (tag or emotion or rhythm) else "风格=" + style
     track_file(project, "script", str(out), f"剧本: {concept[:50]}",
                f"{tag_str},场景数={len(script.get('scenes', []))}")

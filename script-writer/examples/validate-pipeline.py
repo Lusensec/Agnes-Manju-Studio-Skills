@@ -17,6 +17,8 @@ Rules (deterministic, zero API):
   S2  场景数        scenes 非空，且每场有 scene_id + description
   S3  资产引用      场景 location/props 必须能在剧本五路资产里找到（防悬空引用）
   S4  钩子          config.hook 非空，或首 --min-hook-scenes 个场景含"钩子/反转/悬念"
+  S5  画风锁        若启用 --style-bible，确认 block_en 已生成并注入场景
+  S6  连载台账      若存在 series.json，核对本集角色是否已登记（防角色漂移）
   H1  分镜连号      shotlist.shots 的 shot 字段从 1 连续
   H2  分镜帧文本    每个 shot.frame 非空且 >= 20 字符（够喂生图）
   H3  分镜时长      每镜 seconds 在 [4,12]
@@ -122,6 +124,29 @@ def main():
             if not hook and not has_head:
                 add("WARN", "S4", "无核心钩子（config.hook 空且开场无钩子词）")
 
+            # S5 画风锁：若启用了 style-bible，确认 block 已注入
+            sb = (script.get("config") or {}).get("style_bible") or {}
+            if sb.get("name") and not sb.get("block_en"):
+                add("FAIL", "S5", f"画风锁 '{sb.get('name')}' 已登记但缺 block_en（提示词块未生成）")
+            if sb.get("name") and sb.get("block_en"):
+                # 抽查：至少一个场景 description 含画风块片段
+                probe = sb["block_en"].split(",")[0][:12]
+                if probe and not any(probe in (s.get("description") or "") for s in scenes):
+                    add("WARN", "S5", f"画风块 '{probe}...' 未出现在任何场景 description（可能未注入）")
+
+            # S6 连载台账：若存在 series.json，核对角色是否都已登记
+            ser_f = list(sd.glob(f"{project}-series.json"))
+            if ser_f:
+                try:
+                    ledger = json.loads(ser_f[0].read_text(encoding="utf-8"))
+                    led_chars = set(ledger.get("characters", {}).keys())
+                    cur_chars = {c.get("name") for c in script.get("characters", []) if c.get("name")}
+                    new_chars = cur_chars - led_chars
+                    if new_chars and ledger.get("characters"):
+                        add("WARN", "S6", f"本集新增角色未入连载台账: {sorted(new_chars)}（连载应沿用既有角色）")
+                except Exception:
+                    add("WARN", "S6", "series.json 解析失败，无法核对连载台账")
+
     # ---------------- shotlist stage ----------------
     if stage in ("shotlist", "all") and shotlist:
         shots = shotlist.get("shots", [])
@@ -170,7 +195,7 @@ def main():
     # ---------------- report ----------------
     print(f"🧪 质量门: {project} (stage={stage})")
     if not results:
-        print("  ✅ 已检规则全部通过（台词字数 / 场景完整性 / 资产引用 / 钩子 / 分镜连号 / 槽位对账）")
+        print("  ✅ 已检规则全部通过（台词/场景/资产/钩子/画风锁/连载/分镜连号/槽位对账）")
     for lvl, code, msg in results:
         icon = {"FAIL": "❌", "WARN": "⚠️", "PASS": "✅"}.get(lvl, "·")
         print(f"  {icon} [{code}] {msg}")

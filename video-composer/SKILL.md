@@ -101,6 +101,10 @@ python examples/merge-videos.py "项目名"
 | `--combat` | 打戏档：[ACTION] 追加"一镜一主动作一反馈、2-3s 细切、攻防互换、禁沙包对手"（配合 gen-shotlist `--combat` 出的分镜） |
 | `--splice` | 段缝衔接：上段尾帧定格（[CUT] 写 freeze 指令）+ 前段分镜图作为本段首参考图，减少段间跳切 |
 
+七段式 [SHOT] 自动消费上游两项：
+- `--style-bible`（write-script 设置的画风锁）→ [SHOT] 前缀参数化风格块
+- `--blocking`（gen-shotlist 输出的场面调度）→ [SHOT] 站位/权力几何一行式声明
+
 出片前建议先跑确定性质量门（零 API，秒级）：
 
 ```bash
@@ -153,7 +157,7 @@ python script-writer/examples/validate-pipeline.py "项目名" --stage all
 
 | 脚本 | 参数 |
 |------|------|
-| `examples/gen-video.py` | `[项目名] [--scene N] [--duration N] [--shotlist] [--seven-segment] [--combat] [--splice] [--retry-failed]` |
+| `examples/gen-video.py` | `[项目名] [--scene N] [--duration N] [--shotlist] [--seven-segment] [--combat] [--splice] [--retry-failed]`（画风锁/场面调度自动读剧本 config） |
 | `examples/poll-video.py` | `<video_id> [api_key]` |
 | `examples/merge-videos.py` | `[项目名]` |
 | `examples/load_env.py` | 无 |

@@ -20,13 +20,28 @@ frozen and reused as the next clip's first frame.
 
 def build_seven_segment(desc_en, desc_zh, style_word, dialogues=None,
                         camera=None, mood=None, sound=None,
-                        freeze_last=False, combat=False) -> str:
+                        freeze_last=False, combat=False, blocking=None,
+                        style_block=None) -> str:
     """Compose the seven-segment prompt. All optional args may be None/empty.
-    `dialogues` is either a string or a list of strings; list items are joined
-    with ' / ' (a bare string is used verbatim)."""
+    `style_block` (from a 画风锁) prepends a parameterized style block to [SHOT]."""
     segs = []
-    # [SHOT] — derive a light framing cue from style
-    segs.append(f"[SHOT] {style_word} style, clean composition")
+    # [SHOT] — framing cue + optional style block + optional blocking
+    shot = f"[SHOT] {style_block or style_word + ' style'}, clean composition"
+    if blocking:
+        pos = blocking.get("positions") or []
+        if isinstance(pos, list):
+            pos_txt = " ".join(str(p).strip() for p in pos if p)
+        else:
+            pos_txt = str(pos).strip()
+        power = str(blocking.get("power", "")).strip()
+        bits = []
+        if pos_txt:
+            bits.append(pos_txt)
+        if power:
+            bits.append(f"power: {power}")
+        if bits:
+            shot += " | blocking: " + "; ".join(bits)
+    segs.append(shot)
     # [ACTION]
     action = (desc_en or desc_zh or "").strip()
     if combat:
